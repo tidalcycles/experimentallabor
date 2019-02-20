@@ -1,21 +1,27 @@
 (
 // returns the created dirt instance
-~bootRemoteSuperDirt = { |ip, port = 57111, channels = 2|
-  var dirt;
-  o = Server.local.options;
-  o.numOutputBusChannels = channels;
-  q = Server.remote(\remote, NetAddr(ip, port), o);
-  q.waitForBoot {
-	dirt = SuperDirt(channels, q); // two output channels, increase if you want to pan across more channels
-	// dirt.addModule('envelope', {}, { false });
-	dirt.removeModule(\envelope);
-	//	~dirt.loadSoundFiles; // does not yet work
-	q.sync; // wait for samples to be read
-	dirt.start(57120, [0, 0]);   // start listening on port 57120, create two orbits, each sending audio to channel 0. You can direct sounds to the orbits from tidal e.g. by: `# orbit "0 1 1"
-  };
-
-  Server.default = q;
-  q.latency = 0.5;
-  dirt;
+// assumes that the remote SuperDirt sclang application has a DirtRemoteSoundfileInfo running
+// DirtRemoteSoundfileInfo(dirt.soundLibrary).start(langport);
+~bootRemoteSuperDirt = { |ip, port = 57111, channels = 2, langport = 57120|
+	var dirt, remoteLoader, langaddr;
+	o = Server.local.options;
+	o.numOutputBusChannels = channels;
+	q = Server.remote(\remote, NetAddr(ip, port), o);
+	langaddr = NetAddr(ip, langport);
+	q.waitForBoot {
+		dirt = SuperDirt(channels, q); // two output channels, increase if you want to pan across more channels
+		dirt.removeModule(\envelope);
+		remoteLoader = DirtRemoteSoundfileInfo(dirt.soundLibrary);
+		remoteLoader.sendRequest(langaddr, { |buffers|
+			buffers.pairsDo { |key, buffer|
+				~lib.addBuffer(key, buffer, appendToExisting: true)
+			}
+		});
+		dirt.start(langport, [0, 0]);
+	};
+	
+	Server.default = q;
+	q.latency = 0.5;
+	dirt;
 };
 )
